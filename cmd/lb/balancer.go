@@ -5,25 +5,26 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"time"
 
-	"github.com/roman-mazur/design-practice-2-template/httptools"
-	"github.com/roman-mazur/design-practice-2-template/signal"
+	"github.com/Alexander3006/design-practice-2/httptools"
+	"github.com/Alexander3006/design-practice-2/signal"
 )
 
 var (
-	port = flag.Int("port", 8090, "load balancer port")
-	timeoutSec = flag.Int("timeout-sec", 3, "request timeout time in seconds")
-	https = flag.Bool("https", false, "whether backends support HTTPs")
-
+	port         = flag.Int("port", 8090, "load balancer port")
+	timeoutSec   = flag.Int("timeout-sec", 3, "request timeout time in seconds")
+	https        = flag.Bool("https", false, "whether backends support HTTPs")
 	traceEnabled = flag.Bool("trace", false, "whether to include tracing information into responses")
 )
 
 var (
 	timeout = time.Duration(*timeoutSec) * time.Second
-	serversPool = []string{
+	servers = []string{
 		"server1:8080",
 		"server2:8080",
 		"server3:8080",
@@ -51,7 +52,40 @@ func health(dst string) bool {
 	return true
 }
 
-func forward(dst string, rw http.ResponseWriter, r *http.Request) error {
+type ServerPool struct {
+	backends []*Backend
+}
+
+func newServerPool() *ServerPool {
+	return &ServerPool{}
+}
+
+func (s *ServerPool) AddServers(urls ...string) {
+	for _, rawUrl := range urls {
+		u, _ := url.Parse(rawUrl)
+		s.backends = append(s.backends, &Backend{URL: u})
+	}
+}
+
+func (s *ServerPool) Min() int {
+	index := 0
+	min := s.backends[index].Weight
+	for i, b := range s.backends {
+		if b.Weight < min {
+			if b.IsAlive() {
+				index = i
+				min = b.Weight
+			}
+		}
+		continue
+	}
+
+	return index
+}
+
+func (s *ServerPool) forward(rw http.ResponseWriter, r *http.Request) error {
+	serversIndex := s.Min()
+	dst := s.backends[serversIndex].URL.String()
 	ctx, _ := context.WithTimeout(r.Context(), timeout)
 	fwdRequest := r.Clone(ctx)
 	fwdRequest.RequestURI = ""
@@ -72,7 +106,14 @@ func forward(dst string, rw http.ResponseWriter, r *http.Request) error {
 		log.Println("fwd", resp.StatusCode, resp.Request.URL)
 		rw.WriteHeader(resp.StatusCode)
 		defer resp.Body.Close()
-		_, err := io.Copy(rw, resp.Body)
+
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		add := len(body)
+		s.backends[serversIndex].Weight += add
+		_, err = io.Copy(rw, resp.Body)
 		if err != nil {
 			log.Printf("Failed to write response: %s", err)
 		}
@@ -86,24 +127,26 @@ func forward(dst string, rw http.ResponseWriter, r *http.Request) error {
 
 func main() {
 	flag.Parse()
-
-	// TODO: Використовуйте дані про стан сервреа, щоб підтримувати список тих серверів, яким можна відправляти ззапит.
-	for _, server := range serversPool {
+	lb := newServerPool()
+	lb.AddServers(servers...)
+	for _, server := range lb.backends {
 		server := server
 		go func() {
 			for range time.Tick(10 * time.Second) {
-				log.Println(server, health(server))
+				alive := health(server.URL.String())
+				log.Println(server.URL, alive)
+				server.SetAlive(alive)
 			}
 		}()
 	}
 
 	frontend := httptools.CreateServer(*port, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		// TODO: Рееалізуйте свій алгоритм балансувальника.
-		forward(serversPool[0], rw, r)
+		lb.forward(rw, r)
 	}))
 
 	log.Println("Starting load balancer...")
 	log.Printf("Tracing support enabled: %t", *traceEnabled)
 	frontend.Start()
 	signal.WaitForTerminationSignal()
+	fmt.Println(lb.backends[2].Weight)
 }

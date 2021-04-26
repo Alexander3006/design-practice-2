@@ -3,7 +3,7 @@ FROM golang:1.15 as build
 RUN apt-get update && apt-get install -y ninja-build
 
 # TODO: Змініть на власну реалізацію системи збірки
-RUN go get -u github.com/roman-mazur/bood/cmd/bood
+RUN go get -u github.com/G1gg1L3s/design-practice-1/build/cmd/bood
 
 WORKDIR /go/src/practice-2
 COPY . .

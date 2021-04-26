@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/roman-mazur/design-practice-2-template/httptools"
-	"github.com/roman-mazur/design-practice-2-template/signal"
+	"github.com/Alexander3006/design-practice-2/httptools"
+	"github.com/Alexander3006/design-practice-2/signal"
 )
 
 var port = flag.Int("port", 8080, "server port")
@@ -18,6 +18,7 @@ const confResponseDelaySec = "CONF_RESPONSE_DELAY_SEC"
 const confHealthFailure = "CONF_HEALTH_FAILURE"
 
 func main() {
+	flag.Parse()
 	h := new(http.ServeMux)
 
 	h.HandleFunc("/health", func(rw http.ResponseWriter, r *http.Request) {

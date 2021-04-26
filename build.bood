@@ -1,24 +1,38 @@
 go_binary {
   name: "server",
-  // TODO: Відкорегуйте ім'я пакета.
-  pkg: "github.com/roman-mazur/design-practice-2-template/cmd/server",
+  pkg: "github.com/Alexander3006/design-practice-2/cmd/server",
+  testPkg: "github.com/Alexander3006/design-practice-2/cmd/server",
   srcs: [
     "httptools/**/*.go",
     "signal/**/*.go",
     "cmd/server/*.go"
+  ],
+  srcsExclude: [
+    "cmd/server/*_test.go"
+  ],
+  testSrcs: [
+    "cmd/server/*_test.go"
   ]
 }
 
 go_binary {
   name: "lb",
-  // TODO: Відкорегуйте ім'я пакета.
-  pkg: "github.com/roman-mazur/design-practice-2-template/cmd/lb",
+  pkg: "github.com/Alexander3006/design-practice-2/cmd/lb",
+  testPkg: "github.com/Alexander3006/design-practice-2/cmd/lb",
   srcs: [
     "httptools/**/*.go",
     "signal/**/*.go",
     "cmd/lb/*.go"
+  ],
+    // Test sources.
+  srcsExclude: [
+    "cmd/lb/*_test.go"
+  ],
+  testSrcs: [
+    "cmd/lb/*_test.go"
   ]
   // TODO: Додайте запуск тестів для балансувальника.
 }
+
 
 // TODO: Додайте модуль для інтеграційних тестів.
