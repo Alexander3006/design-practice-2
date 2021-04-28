@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -52,40 +53,67 @@ func health(dst string) bool {
 	return true
 }
 
-type ServerPool struct {
+type Backend struct {
+	URL    *url.URL
+	Alive  bool
+	Weight int
+}
+
+type LoadBalance struct {
 	backends []*Backend
 }
 
-func newServerPool() *ServerPool {
-	return &ServerPool{}
+func newLoadBalance() *LoadBalance {
+	return &LoadBalance{}
 }
 
-func (s *ServerPool) AddServers(urls ...string) {
+func (l *LoadBalance) AddServers(urls ...string) {
 	for _, rawUrl := range urls {
 		u, _ := url.Parse(rawUrl)
-		s.backends = append(s.backends, &Backend{URL: u})
+		l.backends = append(l.backends, &Backend{URL: u})
 	}
 }
 
-func (s *ServerPool) Min() int {
-	index := 0
-	min := s.backends[index].Weight
-	for i, b := range s.backends {
-		if b.Weight < min {
-			if b.IsAlive() {
+func (l *LoadBalance) FirstHealthServer() int {
+	for i, b := range l.backends {
+		if b.Alive {
+			return i
+		}
+		continue
+	}
+	return -1
+}
+
+func (l *LoadBalance) Min() (int, error) {
+	index := l.FirstHealthServer()
+	if index == -1 {
+		return index, errors.New("No healthy servers")
+	}
+	servers := l.backends
+	min := servers[index].Weight
+	for i := index; i < len(servers); i++ {
+		if servers[i].Weight < min {
+			if servers[i].Alive {
 				index = i
-				min = b.Weight
+				min = servers[i].Weight
 			}
 		}
 		continue
 	}
 
-	return index
+	return index, nil
 }
 
-func (s *ServerPool) forward(rw http.ResponseWriter, r *http.Request) error {
-	serversIndex := s.Min()
-	dst := s.backends[serversIndex].URL.String()
+func (l *LoadBalance) forward(rw http.ResponseWriter, r *http.Request) error {
+	serverIndex, err := l.Min()
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	server := l.backends[serverIndex]
+	dst := server.URL.String()
+
 	ctx, _ := context.WithTimeout(r.Context(), timeout)
 	fwdRequest := r.Clone(ctx)
 	fwdRequest.RequestURI = ""
@@ -112,7 +140,8 @@ func (s *ServerPool) forward(rw http.ResponseWriter, r *http.Request) error {
 			log.Fatalln(err)
 		}
 		add := len(body)
-		s.backends[serversIndex].Weight += add
+		server.Weight += add
+
 		_, err = io.Copy(rw, resp.Body)
 		if err != nil {
 			log.Printf("Failed to write response: %s", err)
@@ -127,7 +156,8 @@ func (s *ServerPool) forward(rw http.ResponseWriter, r *http.Request) error {
 
 func main() {
 	flag.Parse()
-	lb := newServerPool()
+
+	lb := newLoadBalance()
 	lb.AddServers(servers...)
 	for _, server := range lb.backends {
 		server := server
@@ -135,18 +165,18 @@ func main() {
 			for range time.Tick(10 * time.Second) {
 				alive := health(server.URL.String())
 				log.Println(server.URL, alive)
-				server.SetAlive(alive)
+				server.Alive = alive
 			}
 		}()
 	}
 
-	frontend := httptools.CreateServer(*port, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		lb.forward(rw, r)
-	}))
+	frontend := httptools.CreateServer(*port, http.HandlerFunc(
+		func(rw http.ResponseWriter, r *http.Request) {
+			lb.forward(rw, r)
+		}))
 
 	log.Println("Starting load balancer...")
 	log.Printf("Tracing support enabled: %t", *traceEnabled)
 	frontend.Start()
 	signal.WaitForTerminationSignal()
-	fmt.Println(lb.backends[2].Weight)
 }
