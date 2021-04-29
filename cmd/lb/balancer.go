@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/Alexander3006/design-practice-2/httptools"
@@ -40,16 +39,15 @@ func scheme() string {
 }
 
 type Backend struct {
-	URL    *url.URL
+	URL    string
 	Alive  bool
 	Weight int
 }
 
 func NewPool(urls ...string) []*Backend {
 	var servers []*Backend
-	for _, rawUrl := range urls {
-		u, _ := url.Parse(rawUrl)
-		servers = append(servers, &Backend{URL: u})
+	for _, url := range urls {
+		servers = append(servers, &Backend{URL: url})
 	}
 	return servers
 }
@@ -99,7 +97,7 @@ func forward(servers []*Backend, rw http.ResponseWriter, r *http.Request) error 
 		return err
 	}
 
-	dst := server.URL.String()
+	dst := server.URL
 
 	ctx, _ := context.WithTimeout(r.Context(), timeout)
 	fwdRequest := r.Clone(ctx)
@@ -163,7 +161,7 @@ func main() {
 		server := server
 		go func() {
 			for range time.Tick(10 * time.Second) {
-				alive := health(server.URL.String())
+				alive := health(server.URL)
 				log.Println(server.URL, alive)
 				server.Alive = alive
 			}
