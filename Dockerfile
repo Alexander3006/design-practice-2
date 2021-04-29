@@ -8,7 +8,7 @@ RUN go get -u github.com/G1gg1L3s/design-practice-1/build/cmd/bood
 WORKDIR /go/src/practice-2
 COPY . .
 
-RUN CGO_ENABLED=0 bood
+RUN CGO_ENABLED=0 bood out/bin/lb out/bin/server
 
 # ==== Final image ====
 FROM alpine:3.11

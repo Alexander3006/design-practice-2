@@ -24,7 +24,7 @@ go_binary {
     "signal/**/*.go",
     "cmd/lb/*.go"
   ],
-    // Test sources.
+  // Test sources.
   srcsExclude: [
     "cmd/lb/*_test.go"
   ],
@@ -35,4 +35,12 @@ go_binary {
 }
 
 
-// TODO: Додайте модуль для інтеграційних тестів.
+
+go_binary {
+  name: "integration-tests",
+  pkg: "github.com/Alexander3006/design-practice-2/cmd/lb",
+  testPkg: "github.com/Alexander3006/design-practice-2/integration",
+  testSrcs: [
+    "integration/*_test.go",
+  ]
+}
