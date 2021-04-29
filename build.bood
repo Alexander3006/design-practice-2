@@ -38,9 +38,9 @@ go_binary {
 
 go_binary {
   name: "integration-tests",
-  pkg: "github.com/Alexander3006/design-practice-2/cmd/lb",
   testPkg: "github.com/Alexander3006/design-practice-2/integration",
   testSrcs: [
     "integration/*_test.go",
-  ]
+  ],
+  bench: "."
 }

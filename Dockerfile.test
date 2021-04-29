@@ -9,7 +9,5 @@ WORKDIR /go/src/practice-2
 COPY . .
 
 RUN CGO_ENABLED=0 bood out/bin/lb
-# Not to trigger building the 'integration-tests' binary
-RUN touch out/bin/integration-tests
 
-ENTRYPOINT ["bood", "out/.integration-tests.test.out", "-v"]
+ENTRYPOINT ["./entry-test.sh"]
