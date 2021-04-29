@@ -24,8 +24,8 @@ var (
 )
 
 var (
-	timeout = time.Duration(*timeoutSec) * time.Second
-	servers = []string{
+	timeout     = time.Duration(*timeoutSec) * time.Second
+	serversPool = []string{
 		"server1:8080",
 		"server2:8080",
 		"server3:8080",
@@ -39,44 +39,24 @@ func scheme() string {
 	return "http"
 }
 
-func health(dst string) bool {
-	ctx, _ := context.WithTimeout(context.Background(), timeout)
-	req, _ := http.NewRequestWithContext(ctx, "GET",
-		fmt.Sprintf("%s://%s/health", scheme(), dst), nil)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return false
-	}
-	if resp.StatusCode != http.StatusOK {
-		return false
-	}
-	return true
-}
-
 type Backend struct {
 	URL    *url.URL
 	Alive  bool
 	Weight int
 }
 
-type LoadBalance struct {
-	backends []*Backend
-}
-
-func newLoadBalance() *LoadBalance {
-	return &LoadBalance{}
-}
-
-func (l *LoadBalance) AddServers(urls ...string) {
+func NewPool(urls ...string) []*Backend {
+	var servers []*Backend
 	for _, rawUrl := range urls {
 		u, _ := url.Parse(rawUrl)
-		l.backends = append(l.backends, &Backend{URL: u})
+		servers = append(servers, &Backend{URL: u})
 	}
+	return servers
 }
 
-func (l *LoadBalance) FirstHealthServer() int {
-	for i, b := range l.backends {
-		if b.Alive {
+func FirstHealthServer(servers []*Backend) int {
+	for i, s := range servers {
+		if s.Alive {
 			return i
 		}
 		continue
@@ -84,12 +64,11 @@ func (l *LoadBalance) FirstHealthServer() int {
 	return -1
 }
 
-func (l *LoadBalance) Min() (int, error) {
-	index := l.FirstHealthServer()
+func Min(servers []*Backend) int {
+	index := FirstHealthServer(servers)
 	if index == -1 {
-		return index, errors.New("No healthy servers")
+		return index
 	}
-	servers := l.backends
 	min := servers[index].Weight
 	for i := index; i < len(servers); i++ {
 		if servers[i].Weight < min {
@@ -101,17 +80,25 @@ func (l *LoadBalance) Min() (int, error) {
 		continue
 	}
 
-	return index, nil
+	return index
 }
 
-func (l *LoadBalance) forward(rw http.ResponseWriter, r *http.Request) error {
-	serverIndex, err := l.Min()
+func getServer(servers []*Backend) (*Backend, error) {
+	serverIndex := Min(servers)
+	if serverIndex == -1 {
+		return nil, errors.New("No healthy servers")
+	}
+	server := servers[serverIndex]
+	return server, nil
+}
+
+func forward(servers []*Backend, rw http.ResponseWriter, r *http.Request) error {
+	server, err := getServer(servers)
 	if err != nil {
 		log.Println(err)
 		return err
 	}
 
-	server := l.backends[serverIndex]
 	dst := server.URL.String()
 
 	ctx, _ := context.WithTimeout(r.Context(), timeout)
@@ -154,12 +141,25 @@ func (l *LoadBalance) forward(rw http.ResponseWriter, r *http.Request) error {
 	}
 }
 
+func health(dst string) bool {
+	ctx, _ := context.WithTimeout(context.Background(), timeout)
+	req, _ := http.NewRequestWithContext(ctx, "GET",
+		fmt.Sprintf("%s://%s/health", scheme(), dst), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	return true
+}
+
 func main() {
 	flag.Parse()
 
-	lb := newLoadBalance()
-	lb.AddServers(servers...)
-	for _, server := range lb.backends {
+	servers := NewPool(serversPool...)
+	for _, server := range servers {
 		server := server
 		go func() {
 			for range time.Tick(10 * time.Second) {
@@ -172,7 +172,7 @@ func main() {
 
 	frontend := httptools.CreateServer(*port, http.HandlerFunc(
 		func(rw http.ResponseWriter, r *http.Request) {
-			lb.forward(rw, r)
+			forward(servers, rw, r)
 		}))
 
 	log.Println("Starting load balancer...")
