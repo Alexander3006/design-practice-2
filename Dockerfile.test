@@ -8,6 +8,6 @@ RUN go get -u github.com/G1gg1L3s/design-practice-1/build/cmd/bood
 WORKDIR /go/src/practice-2
 COPY . .
 
-# TODO: Замініть на запуск bood, який призводить до виконання інтеграційних тестів.
-# ENTRYPOINT ["bood", "integration-tests"]
-ENTRYPOINT ["echo", "ok"]
+RUN CGO_ENABLED=0 bood out/bin/lb
+
+ENTRYPOINT ["./entry-test.sh"]
