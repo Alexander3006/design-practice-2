@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.com/Alexander3006/design-practice-2.svg?branch=master)](https://travis-ci.com/Alexander3006/design-practice-2)
+
 # Load balancer
 
 To run the integration tests:
