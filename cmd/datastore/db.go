@@ -1,120 +1,122 @@
 package datastore
 
 import (
-	"bufio"
-	"encoding/binary"
 	"fmt"
 	"io"
-	"os"
+	"io/ioutil"
+	"log"
 	"path/filepath"
+	"sort"
+	"strconv"
+	"sync"
+	"time"
 )
 
-const outFileName = "current-data"
-
-var ErrNotFound = fmt.Errorf("record does not exist")
-
-type hashIndex map[string]int64
-
 type Db struct {
-	out *os.File
-	outPath string
-	outOffset int64
-
-	index hashIndex
+	segments    []*Segment
+	segmentSize int64
+	dirPath     string
+	combining   bool
+	mu          sync.Mutex
 }
 
-func NewDb(dir string) (*Db, error) {
-	outputPath := filepath.Join(dir, outFileName)
-	f, err := os.OpenFile(outputPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
-	if err != nil {
-		return nil, err
-	}
+func NewDb(dir string, segmentSize int64) (*Db, error) {
 	db := &Db{
-		outPath: outputPath,
-		out:     f,
-		index:   make(hashIndex),
+		segments:    []*Segment{},
+		segmentSize: segmentSize,
+		dirPath:     dir,
+		combining:   false,
 	}
-	err = db.recover()
+	err := db.recover()
 	if err != nil && err != io.EOF {
 		return nil, err
+	}
+	if len(db.segments) == 0 {
+		sgm, err := db.newSegment()
+		if err != nil {
+			return nil, err
+		}
+		db.segments = append(db.segments, sgm)
 	}
 	return db, nil
 }
 
-const bufSize = 8192
+func (db *Db) newSegment() (*Segment, error) {
+	name := time.Now().UnixNano()
+	segmentPath := filepath.Join(db.dirPath, strconv.FormatInt(name, 10))
+	sgm, err := NewSegment(segmentPath, db.segmentSize)
+	if err != nil {
+		return nil, err
+	}
+	db.mu.Lock()
+	db.segments = append(db.segments, sgm)
+	db.mu.Unlock()
+	if len(db.segments) >= 3 {
+		go db.combine(len(db.segments) - 1)
+	}
+	return sgm, err
+}
 
 func (db *Db) recover() error {
-	input, err := os.Open(db.outPath)
+	files, err := ioutil.ReadDir(db.dirPath)
 	if err != nil {
 		return err
 	}
-	defer input.Close()
-
-	var buf [bufSize]byte
-	in := bufio.NewReaderSize(input, bufSize)
-	for err == nil {
-		var (
-			header, data []byte
-			n int
-		)
-		header, err = in.Peek(bufSize)
-		if err == io.EOF {
-			if len(header) == 0 {
-				return err
-			}
-		} else if err != nil {
+	var segments []string
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		segments = append(segments, file.Name())
+	}
+	sort.SliceStable(segments, func(i, j int) bool {
+		iTime, err := strconv.Atoi(segments[i])
+		if err != nil {
+			log.Fatal(err)
+		}
+		jTime, err := strconv.Atoi(segments[j])
+		if err != nil {
+			log.Fatal(err)
+		}
+		return time.Unix(0, int64(iTime)).Before(time.Unix(0, int64(jTime)))
+	})
+	for _, name := range segments {
+		path := filepath.Join(db.dirPath, name)
+		sgm, err := NewSegment(path, db.segmentSize)
+		if err != nil {
 			return err
 		}
-		size := binary.LittleEndian.Uint32(header)
-
-		if size < bufSize {
-			data = buf[:size]
-		} else {
-			data = make([]byte, size)
+		err = sgm.recover()
+		if err != nil && err != io.EOF {
+			return err
 		}
-		n, err = in.Read(data)
-
-		if err == nil {
-			if n != int(size) {
-				return fmt.Errorf("corrupted file")
-			}
-
-			var e entry
-			e.Decode(data)
-			db.index[e.key] = db.outOffset
-			db.outOffset += int64(n)
-		}
+		db.segments = append(db.segments, sgm)
 	}
 	return err
 }
 
-func (db *Db) Close() error {
-	return db.out.Close()
+func (db *Db) Close() {
+	for _, sgm := range db.segments {
+		err := sgm.Close()
+		if err != nil {
+			fmt.Errorf(err.Error())
+		}
+	}
 }
 
 func (db *Db) Get(key string) (string, error) {
-	position, ok := db.index[key]
-	if !ok {
-		return "", ErrNotFound
-	}
+	for i := len(db.segments) - 1; i >= 0; i-- {
+		sgm := db.segments[i]
+		val, err := sgm.Get(key)
 
-	file, err := os.Open(db.outPath)
-	if err != nil {
-		return "", err
+		if err == nil {
+			return val, nil
+		}
+		if err == ErrNotFound {
+			continue
+		}
 	}
-	defer file.Close()
-
-	_, err = file.Seek(position, 0)
-	if err != nil {
-		return "", err
-	}
-
-	reader := bufio.NewReader(file)
-	value, err := readValue(reader)
-	if err != nil {
-		return "", err
-	}
-	return value, nil
+	return "", ErrNotFound
 }
 
 func (db *Db) Put(key, value string) error {
@@ -122,10 +124,67 @@ func (db *Db) Put(key, value string) error {
 		key:   key,
 		value: value,
 	}
-	n, err := db.out.Write(e.Encode())
-	if err == nil {
-		db.index[key] = db.outOffset
-		db.outOffset += int64(n)
+	db.mu.Lock()
+	currentSegment := db.segments[len(db.segments)-1]
+	db.mu.Unlock()
+	if currentSegment.IsFull() {
+		sgm, err := db.newSegment()
+		if err != nil {
+			return err
+		}
+		currentSegment = sgm
 	}
-	return err
+	err := currentSegment.Write(e)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (db *Db) combine(n int) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	if db.combining {
+		return nil
+	}
+	db.combining = true
+	forUpdate := db.segments[0:n]
+	data := make(map[string]string)
+	for _, sgm := range forUpdate {
+		all, err := sgm.GetAll()
+		if err != nil {
+			return err
+		}
+		for key, val := range all {
+			data[key] = val
+		}
+	}
+	systemSegmentPath := filepath.Join(db.dirPath, "system-segment")
+	sgm, err := NewSegment(systemSegmentPath, db.segmentSize)
+	if err != nil {
+		return err
+	}
+	for key, val := range data {
+		e := entry{
+			key:   key,
+			value: val,
+		}
+		sgm.Write(e)
+	}
+	err = sgm.Relocate(forUpdate[len(forUpdate)-1].path)
+	if err != nil {
+		return err
+	}
+	segments := append([]*Segment{sgm}, db.segments[n:]...)
+	db.segments = segments
+	for i := 0; i < len(forUpdate)-1; i++ {
+		sgm := forUpdate[i]
+		err := sgm.HardRemove()
+		sgm = nil
+		if err != nil {
+			fmt.Errorf("remove segment error")
+		}
+	}
+	db.combining = false
+	return nil
 }
