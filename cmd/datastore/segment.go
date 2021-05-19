@@ -9,14 +9,15 @@ import (
 )
 
 type hashIndex map[string]int64
+
 var ErrNotFound = fmt.Errorf("record does not exist")
 
 type Segment struct {
-	path string
-	file *os.File
+	path      string
+	file      *os.File
 	outOffset int64
-	maxSize int64
-	index hashIndex
+	maxSize   int64
+	index     hashIndex
 }
 
 func NewSegment(path string, maxSize int64) (*Segment, error) {
@@ -25,11 +26,11 @@ func NewSegment(path string, maxSize int64) (*Segment, error) {
 		return nil, err
 	}
 	sgm := &Segment{
-		path: path,
-		file: f,
+		path:      path,
+		file:      f,
 		outOffset: 0,
-		maxSize: maxSize,
-		index: map[string]int64{},
+		maxSize:   maxSize,
+		index:     map[string]int64{},
 	}
 	return sgm, nil
 }
@@ -38,7 +39,7 @@ func (sgm Segment) IsFull() bool {
 	return sgm.outOffset >= sgm.maxSize
 }
 
-func (sgm* Segment) Write(data entry) error {
+func (sgm *Segment) Write(data entry) error {
 	n, err := sgm.file.Write(data.Encode())
 	if err != nil {
 		return err
@@ -63,7 +64,7 @@ func (sgm *Segment) recover() error {
 	for err == nil {
 		var (
 			header, data []byte
-			n int
+			n            int
 		)
 		header, err = in.Peek(bufSize)
 		if err == io.EOF {
@@ -97,28 +98,28 @@ func (sgm *Segment) recover() error {
 }
 
 func (sgm Segment) Get(key string) (string, error) {
-		position, ok := sgm.index[key]
-		if !ok {
-			return "", ErrNotFound
-		}
+	position, ok := sgm.index[key]
+	if !ok {
+		return "", ErrNotFound
+	}
 
-		file := sgm.file
+	file := sgm.file
 
-		_, err := file.Seek(position, 0)
-		if err != nil {
-			return "", err
-		}
-		reader := bufio.NewReader(file)
-		value, err := readValue(reader)
-		if err != nil {
-			return "", err
-		}
-		return value, nil
+	_, err := file.Seek(position, 0)
+	if err != nil {
+		return "", err
+	}
+	reader := bufio.NewReader(file)
+	value, err := readValue(reader)
+	if err != nil {
+		return "", err
+	}
+	return value, nil
 }
 
 func (sgm Segment) GetAll() (map[string]string, error) {
 	all := make(map[string]string)
-	for key, _ := range sgm.index {
+	for key := range sgm.index {
 		val, err := sgm.Get(key)
 		if err != nil {
 			return nil, err

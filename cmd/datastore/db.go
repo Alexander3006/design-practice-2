@@ -95,13 +95,14 @@ func (db *Db) recover() error {
 	return err
 }
 
-func (db *Db) Close() {
+func (db *Db) Close() error {
 	for _, sgm := range db.segments {
 		err := sgm.Close()
 		if err != nil {
-			fmt.Errorf(err.Error())
+			return err
 		}
 	}
+	return nil
 }
 
 func (db *Db) Get(key string) (string, error) {
@@ -182,7 +183,7 @@ func (db *Db) combine(n int) error {
 		err := sgm.HardRemove()
 		sgm = nil
 		if err != nil {
-			fmt.Errorf("remove segment error")
+			return fmt.Errorf("remove segment error")
 		}
 	}
 	db.combining = false
