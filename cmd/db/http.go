@@ -16,7 +16,7 @@ import (
 const KB = 1024
 const MB = KB * 1024
 
-var port = flag.Int("p", 8080, "server's port")
+var port = flag.Int("p", 8070, "server's port")
 var path = flag.String("d", ".db", "database's directory path")
 var segment_size = flag.Int("s", 10*MB, "segment size in bytes")
 

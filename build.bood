@@ -35,6 +35,20 @@ go_binary {
 }
 
 
+go_binary {
+  name: "db",
+  pkg: "github.com/Alexander3006/design-practice-2/cmd/db",
+  testPkg: "github.com/Alexander3006/design-practice-2/cmd/datastore",
+  srcs: [
+    "cmd/datastore/**/*.go",
+    "cmd/db/**/*.go",
+  ],
+  testSrcs: [
+    "cmd/datastore/**/*_test.go",
+    "cmd/db/**/*_test.go",
+  ]
+}
+
 
 go_binary {
   name: "integration-tests",
