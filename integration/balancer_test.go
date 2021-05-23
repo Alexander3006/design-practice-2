@@ -63,7 +63,7 @@ func TestBalancer(t *testing.T) {
 
 func BenchmarkBalancer(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		_, err := client.Get(fmt.Sprintf("%s/api/v1/some-data", baseAddress))
+		_, err := client.Get(fmt.Sprintf("%s/api/v1/some-data?key=redstone", baseAddress))
 		if err != nil {
 			b.Error(err)
 		}
