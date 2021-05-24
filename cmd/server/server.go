@@ -23,7 +23,7 @@ const dbAddr = "http://db:8070"
 
 func insertCommand() {
 	const command = "redstone"
-	today := time.Now().Format("01-01-2001")
+	today := time.Now().Format("02-01-2006")
 	url := fmt.Sprintf("%s/db/%s", dbAddr, command)
 	body := fmt.Sprintf(`{"value":"%s"}`, today)
 	body += "\n"

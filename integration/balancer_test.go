@@ -77,7 +77,7 @@ func TestBalancer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Error decoding json: %s (%s)", err, string(raw))
 		}
-		today := time.Now().Format("01-01-2001")
+		today := time.Now().Format("02-01-2006")
 		if body.Value != today {
 			t.Fatalf("Value returned from db is wrong: expected %s but got %s", today, body.Value)
 		}

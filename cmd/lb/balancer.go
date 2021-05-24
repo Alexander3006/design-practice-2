@@ -125,7 +125,6 @@ func forward(servers []*Backend, rw http.ResponseWriter, r *http.Request) error 
 		}
 		add := len(body)
 		server.Weight += add
-		log.Printf(`Read "%s"`, string(body))
 		_, err = rw.Write(body)
 		if err != nil {
 			log.Printf("Failed to write response: %s", err)
