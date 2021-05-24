@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -118,18 +117,19 @@ func forward(servers []*Backend, rw http.ResponseWriter, r *http.Request) error 
 		}
 		log.Println("fwd", resp.StatusCode, resp.Request.URL)
 		rw.WriteHeader(resp.StatusCode)
-		defer resp.Body.Close()
 
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			log.Fatalln(err)
+			log.Printf("Error reading from the server: %s", err)
+			return err
 		}
 		add := len(body)
 		server.Weight += add
-
-		_, err = io.Copy(rw, resp.Body)
+		log.Printf(`Read "%s"`, string(body))
+		_, err = rw.Write(body)
 		if err != nil {
 			log.Printf("Failed to write response: %s", err)
+			return err
 		}
 		return nil
 	} else {
