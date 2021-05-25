@@ -129,6 +129,7 @@ func (db *Db) Put(key, value string) error {
 	currentSegment := db.segments[len(db.segments)-1]
 	db.mu.Unlock()
 	if !currentSegment.active {
+		currentSegment.StopWritingThread()
 		sgm, err := db.newSegment()
 		if err != nil {
 			return err
