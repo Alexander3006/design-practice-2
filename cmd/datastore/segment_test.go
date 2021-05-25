@@ -35,7 +35,9 @@ func Test_Segment(t *testing.T) {
 
 	for i := 0; i < ENTRY_NUMBER; i++ {
 		key := craft_string(i)
-		err := db.Put(key, key)
+		res := make(chan *entry)
+		err := db.Put(key, key, res)
+		<- res
 		if err != nil {
 			println(err.Error())
 			t.Errorf("Put db error: %d", i)
@@ -45,6 +47,7 @@ func Test_Segment(t *testing.T) {
 	for i := 0; i < ENTRY_NUMBER; i++ {
 		key := craft_string(i)
 		val, err := db.Get(key)
+		//<- res
 		if err != nil {
 			t.Errorf("Get db error: %d", i)
 		}

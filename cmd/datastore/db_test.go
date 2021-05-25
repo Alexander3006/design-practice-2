@@ -29,7 +29,9 @@ func TestDb_Put(t *testing.T) {
 
 	t.Run("put/get", func(t *testing.T) {
 		for _, pair := range pairs {
-			err := db.Put(pair[0], pair[1])
+			res := make(chan *entry)
+			err := db.Put(pair[0], pair[1], res)
+			<- res
 			if err != nil {
 				t.Errorf("Cannot put %s: %s", pairs[0], err)
 			}
