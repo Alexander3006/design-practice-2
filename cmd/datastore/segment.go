@@ -168,11 +168,11 @@ func (sgm *Segment) initWritingThread(writeChan chan entry) error {
 		if !opened {
 			break
 		}
+		sgm.mu.Lock()
 		n, err := file.Write(data.Encode())
 		if err != nil {
 			return err
 		}
-		sgm.mu.Lock()
 		sgm.index[data.key] = sgm.outOffset
 		sgm.outOffset += int64(n)
 		sgm.active = sgm.outOffset < sgm.maxSize

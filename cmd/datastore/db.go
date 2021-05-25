@@ -161,7 +161,7 @@ func (db *Db) combine(n int) error {
 		}
 	}
 	systemSegmentPath := filepath.Join(db.dirPath, "system-segment")
-	sgm, err := NewSegment(systemSegmentPath, db.segmentSize, false)
+	sgm, err := NewSegment(systemSegmentPath, db.segmentSize, true)
 	if err != nil {
 		return err
 	}
@@ -173,6 +173,7 @@ func (db *Db) combine(n int) error {
 		}
 		sgm.Write(e)
 	}
+	sgm.StopWritingThread()
 	db.mu.Lock()
 	err = sgm.Relocate(forUpdate[len(forUpdate)-1].path)
 	if err != nil {
