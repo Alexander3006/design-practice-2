@@ -36,7 +36,6 @@ func NewDb(dir string, segmentSize int64) (*Db, error) {
 		if err != nil {
 			return nil, err
 		}
-		db.segments = append(db.segments, sgm)
 	}
 	return db, nil
 }
@@ -107,8 +106,8 @@ func (db *Db) Close() error {
 
 func (db *Db) Get(key string) (string, error) {
 	db.mu.Lock()
-	sgms := db.segments
 	defer db.mu.Unlock()
+	sgms := db.segments
 	for i := len(sgms) - 1; i >= 0; i-- {
 		sgm := sgms[i]
 		val, err := sgm.Get(key)
