@@ -107,7 +107,7 @@ func (db *Db) Close() error {
 	return nil
 }
 
-func (db *Db) Get(key string) (string, error) {
+func (db *Db) Get(key string, result chan *entry) (string, error) {
 	db.mu.Lock()
 	sgms := db.segments
 	db.mu.Unlock()
@@ -115,12 +115,17 @@ func (db *Db) Get(key string) (string, error) {
 		sgm := sgms[i]
 		val, err := sgm.Get(key)
 		if err == nil {
+			result <- &entry{
+				key: key,
+				value: val,
+			}
 			return val, nil
 		}
 		if err == ErrNotFound {
 			continue
 		}
 	}
+	result <- nil
 	return "", ErrNotFound
 }
 
