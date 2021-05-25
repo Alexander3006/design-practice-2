@@ -106,8 +106,11 @@ func (db *Db) Close() error {
 }
 
 func (db *Db) Get(key string) (string, error) {
-	for i := len(db.segments) - 1; i >= 0; i-- {
-		sgm := db.segments[i]
+	db.mu.Lock()
+	sgms := db.segments
+	defer db.mu.Unlock()
+	for i := len(sgms) - 1; i >= 0; i-- {
+		sgm := sgms[i]
 		val, err := sgm.Get(key)
 
 		if err == nil {
@@ -165,6 +168,7 @@ func (db *Db) combine(n int) error {
 	if err != nil {
 		return err
 	}
+	db.mu.Unlock()
 	for key, val := range data {
 		e := entry{
 			key:   key,
@@ -172,6 +176,7 @@ func (db *Db) combine(n int) error {
 		}
 		sgm.Write(e)
 	}
+	db.mu.Lock()
 	err = sgm.Relocate(forUpdate[len(forUpdate)-1].path)
 	if err != nil {
 		return err
