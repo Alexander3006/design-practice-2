@@ -12,6 +12,11 @@ import (
 	"time"
 )
 
+type InsertQuery struct {
+	data 	entry
+	result 	chan error
+}
+
 type Db struct {
 	segments    []*Segment
 	segmentSize int64
@@ -31,11 +36,9 @@ func NewDb(dir string, segmentSize int64) (*Db, error) {
 	if err != nil && err != io.EOF {
 		return nil, err
 	}
-	if len(db.segments) == 0 {
-		_, err := db.newSegment()
-		if err != nil {
-			return nil, err
-		}
+	_, err = db.newSegment()
+	if err != nil {
+		return nil, err
 	}
 	return db, nil
 }
@@ -43,7 +46,7 @@ func NewDb(dir string, segmentSize int64) (*Db, error) {
 func (db *Db) newSegment() (*Segment, error) {
 	name := time.Now().UnixNano()
 	segmentPath := filepath.Join(db.dirPath, strconv.FormatInt(name, 10))
-	sgm, err := NewSegment(segmentPath, db.segmentSize)
+	sgm, err := NewSegment(segmentPath, db.segmentSize, true)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +84,7 @@ func (db *Db) recover() error {
 	})
 	for _, name := range segments {
 		path := filepath.Join(db.dirPath, name)
-		sgm, err := NewSegment(path, db.segmentSize)
+		sgm, err := NewSegment(path, db.segmentSize, false)
 		if err != nil {
 			return err
 		}
@@ -111,7 +114,6 @@ func (db *Db) Get(key string) (string, error) {
 	for i := len(sgms) - 1; i >= 0; i-- {
 		sgm := sgms[i]
 		val, err := sgm.Get(key)
-
 		if err == nil {
 			return val, nil
 		}
@@ -130,18 +132,23 @@ func (db *Db) Put(key, value string) error {
 	db.mu.Lock()
 	currentSegment := db.segments[len(db.segments)-1]
 	db.mu.Unlock()
-	if currentSegment.IsFull() {
+	if !currentSegment.active {
+		currentSegment.StopWritingThread()
 		sgm, err := db.newSegment()
 		if err != nil {
 			return err
 		}
 		currentSegment = sgm
 	}
-	err := currentSegment.Write(e)
+	res := make(chan error)
+	err := currentSegment.Write(InsertQuery{
+		data: e,
+		result: res,
+	})
 	if err != nil {
 		return err
 	}
-	return nil
+	return <-res
 }
 
 func (db *Db) combine(n int) error {
@@ -163,7 +170,7 @@ func (db *Db) combine(n int) error {
 		}
 	}
 	systemSegmentPath := filepath.Join(db.dirPath, "system-segment")
-	sgm, err := NewSegment(systemSegmentPath, db.segmentSize)
+	sgm, err := NewSegment(systemSegmentPath, db.segmentSize, true)
 	if err != nil {
 		return err
 	}
@@ -173,8 +180,17 @@ func (db *Db) combine(n int) error {
 			key:   key,
 			value: val,
 		}
-		sgm.Write(e)
+		res := make(chan error)
+		sgm.Write(InsertQuery{
+			data: e,
+			result: res,
+		})
+		err := <- res
+		if err != nil {
+			return err
+		}
 	}
+	sgm.StopWritingThread()
 	db.mu.Lock()
 	err = sgm.Relocate(forUpdate[len(forUpdate)-1].path)
 	if err != nil {

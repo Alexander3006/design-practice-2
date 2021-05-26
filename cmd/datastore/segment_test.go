@@ -37,7 +37,6 @@ func Test_Segment(t *testing.T) {
 		key := craft_string(i)
 		err := db.Put(key, key)
 		if err != nil {
-			println(err.Error())
 			t.Errorf("Put db error: %d", i)
 		}
 	}
@@ -50,9 +49,6 @@ func Test_Segment(t *testing.T) {
 		}
 		if val != key {
 			t.Errorf("Compare val error: %d", i)
-			if err != ErrNotFound {
-				t.Errorf("%s !== %s", val, key)
-			}
 		}
 	}
 
