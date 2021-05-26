@@ -20,7 +20,7 @@ type Segment struct {
 	maxSize   int64
 	index     hashIndex
 	mu        sync.Mutex
-	writeChan chan Query
+	writeChan chan InsertQuery
 }
 
 func NewSegment(path string, maxSize int64, active bool) (*Segment, error) {
@@ -37,14 +37,14 @@ func NewSegment(path string, maxSize int64, active bool) (*Segment, error) {
 		index:     map[string]int64{},
 	}
 	if active {
-		writeChan := make(chan Query)
+		writeChan := make(chan InsertQuery)
 		sgm.writeChan = writeChan
 		go sgm.initWritingThread(writeChan)
 	}
 	return sgm, nil
 }
 
-func (sgm *Segment) Write(query Query) error {
+func (sgm *Segment) Write(query InsertQuery) error {
 	wChan := sgm.writeChan
 	if wChan == nil {
 		return fmt.Errorf("Can't write to legacy segment")
@@ -157,7 +157,7 @@ func (sgm *Segment) HardRemove() error {
 	return err
 }
 
-func (sgm *Segment) initWritingThread(writeChan chan Query) error {
+func (sgm *Segment) initWritingThread(writeChan chan InsertQuery) error {
 	file, err := os.OpenFile(sgm.path, os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
@@ -172,12 +172,12 @@ func (sgm *Segment) initWritingThread(writeChan chan Query) error {
 		sgm.mu.Lock()
 		n, err := file.Write(data.Encode())
 		if err != nil {
-			return err
+			query.result <- err
 		}
 		sgm.index[data.key] = sgm.outOffset
 		sgm.outOffset += int64(n)
 		sgm.active = sgm.outOffset < sgm.maxSize
-		query.result <- &data
+		query.result <- nil
 		sgm.mu.Unlock()
 	}
 	return nil

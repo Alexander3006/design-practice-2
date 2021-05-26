@@ -35,20 +35,18 @@ func Test_Segment(t *testing.T) {
 
 	for i := 0; i < ENTRY_NUMBER; i++ {
 		key := craft_string(i)
-		res := make(chan *entry)
-		err := db.Put(key, key, res)
-		<- res
+		err := db.Put(key, key)
 		if err != nil {
-			println(err.Error())
 			t.Errorf("Put db error: %d", i)
 		}
 	}
 
 	for i := 0; i < ENTRY_NUMBER; i++ {
 		key := craft_string(i)
-		res := make(chan *entry)
-		go db.Get(key, res)
-		val := (*(<- res)).value
+		val, err := db.Get(key)
+		if err != nil {
+			t.Errorf("Get db error: %d", i)
+		}
 		if val != key {
 			t.Errorf("Compare val error: %d", i)
 		}

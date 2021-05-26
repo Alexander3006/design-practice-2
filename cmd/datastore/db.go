@@ -12,9 +12,9 @@ import (
 	"time"
 )
 
-type Query struct {
+type InsertQuery struct {
 	data 	entry
-	result 	chan *entry
+	result 	chan error
 }
 
 type Db struct {
@@ -107,7 +107,7 @@ func (db *Db) Close() error {
 	return nil
 }
 
-func (db *Db) Get(key string, result chan *entry) (string, error) {
+func (db *Db) Get(key string) (string, error) {
 	db.mu.Lock()
 	sgms := db.segments
 	db.mu.Unlock()
@@ -115,28 +115,19 @@ func (db *Db) Get(key string, result chan *entry) (string, error) {
 		sgm := sgms[i]
 		val, err := sgm.Get(key)
 		if err == nil {
-			result <- &entry{
-				key: key,
-				value: val,
-			}
 			return val, nil
 		}
 		if err == ErrNotFound {
 			continue
 		}
 	}
-	result <- nil
 	return "", ErrNotFound
 }
 
-func (db *Db) Put(key, value string, result chan *entry) error {
+func (db *Db) Put(key, value string) error {
 	e := entry{
 		key:   key,
 		value: value,
-	}
-	query := Query{
-		data: e,
-		result: result,
 	}
 	db.mu.Lock()
 	currentSegment := db.segments[len(db.segments)-1]
@@ -149,11 +140,15 @@ func (db *Db) Put(key, value string, result chan *entry) error {
 		}
 		currentSegment = sgm
 	}
-	err := currentSegment.Write(query)
+	res := make(chan error)
+	err := currentSegment.Write(InsertQuery{
+		data: e,
+		result: res,
+	})
 	if err != nil {
 		return err
 	}
-	return nil
+	return <-res
 }
 
 func (db *Db) combine(n int) error {
@@ -185,12 +180,15 @@ func (db *Db) combine(n int) error {
 			key:   key,
 			value: val,
 		}
-		res := make(chan *entry)
-		sgm.Write(Query{
+		res := make(chan error)
+		sgm.Write(InsertQuery{
 			data: e,
 			result: res,
 		})
-		<- res
+		err := <- res
+		if err != nil {
+			return err
+		}
 	}
 	sgm.StopWritingThread()
 	db.mu.Lock()

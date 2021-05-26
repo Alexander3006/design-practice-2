@@ -29,15 +29,14 @@ func TestDb_Put(t *testing.T) {
 
 	t.Run("put/get", func(t *testing.T) {
 		for _, pair := range pairs {
-			res := make(chan *entry)
-			err := db.Put(pair[0], pair[1], res)
-			<- res
+			err := db.Put(pair[0], pair[1])
 			if err != nil {
 				t.Errorf("Cannot put %s: %s", pairs[0], err)
 			}
-			getRes := make(chan *entry)
-			go db.Get(pair[0], getRes)
-			value := (*(<- getRes)).value
+			value, err := db.Get(pair[0])
+			if err != nil {
+				t.Errorf("Cannot get %s: %s", pairs[0], err)
+			}
 			if value != pair[1] {
 				t.Errorf("Bad value returned expected %s, got %s", pair[1], value)
 			}
@@ -52,9 +51,10 @@ func TestDb_Put(t *testing.T) {
 		}
 
 		for _, pair := range pairs {
-			res := make(chan *entry)
-			go db.Get(pair[0], res)
-			value := (*(<- res)).value
+			value, err := db.Get(pair[0])
+			if err != nil {
+				t.Errorf("Cannot put %s: %s", pairs[0], err)
+			}
 			if value != pair[1] {
 				t.Errorf("Bad value returned expected %s, got %s", pair[1], value)
 			}
