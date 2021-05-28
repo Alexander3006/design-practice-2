@@ -115,6 +115,9 @@ func (db *Db) Get(key string) (string, error) {
 		sgm := sgms[i]
 		val, err := sgm.Get(key)
 		if err == nil {
+			if val == "null" {
+				break
+			}
 			return val, nil
 		}
 		if err == ErrNotFound {
@@ -152,11 +155,8 @@ func (db *Db) Put(key, value string) error {
 }
 
 func (db *Db) Delete(key string) error {
-	err := db.Put(key, "delete")
-	if err != nil {
-		return err
-	}
-	return nil
+	err := db.Put(key, "null")
+	return err
 }
 
 func (db *Db) combine(n int) error {
@@ -184,7 +184,7 @@ func (db *Db) combine(n int) error {
 	}
 	db.mu.Unlock()
 	for key, val := range data {
-		if val == "delete" {
+		if val == "null" {
 			continue
 		}
 		e := entry{

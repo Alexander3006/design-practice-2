@@ -96,7 +96,7 @@ func main() {
 	}).Methods("POST")
 
 	r.HandleFunc("/db/{key}", func(rw http.ResponseWriter, r *http.Request) {
-		log.Printf("Post request to %s", r.URL)
+		log.Printf("Delete request to %s", r.URL)
 		vars := mux.Vars(r)
 		key := vars["key"]
 
