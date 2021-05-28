@@ -95,6 +95,22 @@ func main() {
 
 	}).Methods("POST")
 
+	r.HandleFunc("/db/{key}", func(rw http.ResponseWriter, r *http.Request) {
+		log.Printf("Post request to %s", r.URL)
+		vars := mux.Vars(r)
+		key := vars["key"]
+
+		err = db.Delete(key)
+		rw.Header().Set("content-type", "application/json")
+
+		if err != nil {
+			rw.WriteHeader(http.StatusInternalServerError)
+		} else {
+			rw.WriteHeader(http.StatusOK)
+		}
+
+	}).Methods("DELETE")
+
 	h := new(http.ServeMux)
 
 	h.Handle("/", r)

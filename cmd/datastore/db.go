@@ -13,8 +13,8 @@ import (
 )
 
 type InsertQuery struct {
-	data 	entry
-	result 	chan error
+	data   entry
+	result chan error
 }
 
 type Db struct {
@@ -142,13 +142,21 @@ func (db *Db) Put(key, value string) error {
 	}
 	res := make(chan error)
 	err := currentSegment.Write(InsertQuery{
-		data: e,
+		data:   e,
 		result: res,
 	})
 	if err != nil {
 		return err
 	}
 	return <-res
+}
+
+func (db *Db) Delete(key string) error {
+	err := db.Put(key, "delete")
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (db *Db) combine(n int) error {
@@ -176,16 +184,19 @@ func (db *Db) combine(n int) error {
 	}
 	db.mu.Unlock()
 	for key, val := range data {
+		if val == "delete" {
+			continue
+		}
 		e := entry{
 			key:   key,
 			value: val,
 		}
 		res := make(chan error)
 		sgm.Write(InsertQuery{
-			data: e,
+			data:   e,
 			result: res,
 		})
-		err := <- res
+		err := <-res
 		if err != nil {
 			return err
 		}
