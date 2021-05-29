@@ -1,27 +1,48 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
+	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"os"
-	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Alexander3006/design-practice-2/httptools"
 	"github.com/Alexander3006/design-practice-2/signal"
+	"github.com/gorilla/mux"
 )
 
 var port = flag.Int("port", 8080, "server port")
 
-const confResponseDelaySec = "CONF_RESPONSE_DELAY_SEC"
 const confHealthFailure = "CONF_HEALTH_FAILURE"
+
+const dbAddr = "http://db:8070"
+
+func insertCommand() {
+	const command = "redstone"
+	today := time.Now().Format("02-01-2006")
+	url := fmt.Sprintf("%s/db/%s", dbAddr, command)
+	body := fmt.Sprintf(`{"value":"%s"}`, today)
+	body += "\n"
+	req, err := http.Post(url, "application/json", strings.NewReader(body))
+	if err != nil {
+		log.Fatal(err)
+	}
+	if req.StatusCode != http.StatusOK {
+		log.Fatalf("DB responded with status code %s", req.Status)
+	}
+
+}
 
 func main() {
 	flag.Parse()
-	h := new(http.ServeMux)
+	insertCommand()
+	r := mux.NewRouter()
 
-	h.HandleFunc("/health", func(rw http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/health", func(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("content-type", "text/plain")
 		if failConfig := os.Getenv(confHealthFailure); failConfig == "true" {
 			rw.WriteHeader(http.StatusInternalServerError)
@@ -34,22 +55,44 @@ func main() {
 
 	report := make(Report)
 
-	h.HandleFunc("/api/v1/some-data", func(rw http.ResponseWriter, r *http.Request) {
-		respDelayString := os.Getenv(confResponseDelaySec)
-		if delaySec, parseErr := strconv.Atoi(respDelayString); parseErr == nil && delaySec > 0 && delaySec < 300 {
-			time.Sleep(time.Duration(delaySec) * time.Second)
+	r.HandleFunc("/api/v1/some-data", func(rw http.ResponseWriter, r *http.Request) {
+		key := r.FormValue("key")
+		log.Printf("Request with key='%s'", key)
+
+		if key == "" {
+			rw.WriteHeader(http.StatusNotFound)
+			return
 		}
 
-		report.Process(r)
+		url := fmt.Sprintf("%s/db/%s", dbAddr, key)
 
-		rw.Header().Set("content-type", "application/json")
-		rw.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(rw).Encode([]string{
-			"1", "2",
-		})
+		resp, err := http.Get(url)
+		if err == nil {
+			for k, values := range resp.Header {
+				for _, value := range values {
+					rw.Header().Add(k, value)
+				}
+			}
+
+			log.Println("fwd", resp.StatusCode, resp.Request.URL)
+			rw.WriteHeader(resp.StatusCode)
+			defer resp.Body.Close()
+
+			_, err = io.Copy(rw, resp.Body)
+			if err != nil {
+				log.Printf("Failed to write response: %s", err)
+			}
+		} else {
+			log.Printf("Failed to get response from: %s", err)
+			rw.WriteHeader(http.StatusServiceUnavailable)
+		}
 	})
 
-	h.Handle("/report", report)
+	r.Handle("/report", report)
+
+	h := new(http.ServeMux)
+
+	h.Handle("/", r)
 
 	server := httptools.CreateServer(*port, h)
 	server.Start()

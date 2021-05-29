@@ -1,7 +1,9 @@
 package integration
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"net/http"
 	"testing"
@@ -12,6 +14,11 @@ const baseAddress = "http://balancer:8090"
 
 var client = http.Client{
 	Timeout: 3 * time.Second,
+}
+
+type Response struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 // Finds the server with minimum number of bytes
@@ -38,7 +45,7 @@ func TestBalancer(t *testing.T) {
 	servers := make(map[string]int64)
 
 	for i := 0; i < REQUEST_NUM; i++ {
-		resp, err := client.Get(fmt.Sprintf("%s/api/v1/some-data", baseAddress))
+		resp, err := client.Get(fmt.Sprintf("%s/api/v1/some-data?key=redstone", baseAddress))
 		if err != nil {
 			t.Error(err)
 		}
@@ -57,13 +64,30 @@ func TestBalancer(t *testing.T) {
 
 		servers[server] += bytes
 
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("Status code %s", resp.Status)
+		}
+
+		raw, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("Error reading response: %s", err)
+		}
+		var body Response
+		err = json.Unmarshal(raw, &body)
+		if err != nil {
+			t.Fatalf("Error decoding json: %s (%s)", err, string(raw))
+		}
+		today := time.Now().Format("02-01-2006")
+		if body.Value != today {
+			t.Fatalf("Value returned from db is wrong: expected %s but got %s", today, body.Value)
+		}
 	}
 
 }
 
 func BenchmarkBalancer(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		_, err := client.Get(fmt.Sprintf("%s/api/v1/some-data", baseAddress))
+		_, err := client.Get(fmt.Sprintf("%s/api/v1/some-data?key=redstone", baseAddress))
 		if err != nil {
 			b.Error(err)
 		}
